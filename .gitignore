@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Project-local additions ---
+# Built installer output - published to GitHub Releases instead, not tracked here.
+Installer/
+# Local per-machine app state (window position, per-file priority orders).
+pmm_libraries.json
+# Personal backup files.
+*.bak
+# The template above blanket-ignores *.spec (PyInstaller writes them as scratch
+# files by default), but ours are checked-in build configs, not scratch output.
+!PMM_Priority_Tool.spec
+!PMM_Priority_Tool_onedir.spec
