@@ -558,17 +558,26 @@ def _run_update(download_url: str, version: str, changelog: str) -> None:
         app_exe = str(Path(sys.executable).resolve())
         pid = os.getpid()
         bat_path = tmp_dir / f"pmm_update_{version}.bat"
+        log_path = tmp_dir / "pmm_update_debug.log"
+        # A batch loop piping tasklist into find (or findstr) to poll for our
+        # PID's exit is unreliable here: combining CREATE_NO_WINDOW with
+        # DETACHED_PROCESS below is contradictory about console allocation,
+        # and on some Windows builds the piped `find` stage ends up attached
+        # to its own orphaned console waiting on stdin instead of the pipe,
+        # hanging forever. A single PowerShell wait avoids the pipe entirely.
         bat_lines = [
             "@echo off",
-            f"set PID={pid}",
-            ":waitloop",
-            'tasklist /fi "PID eq %PID%" 2>nul | find "%PID%" >nul',
-            "if not errorlevel 1 (",
-            "  timeout /t 1 /nobreak >nul",
-            "  goto waitloop",
-            ")",
+            f'set LOG="{log_path}"',
+            "echo [start] waiting for app to exit > %LOG%",
+            f'powershell -NoProfile -WindowStyle Hidden -Command '
+            f'"while (Get-Process -Id {pid} -ErrorAction SilentlyContinue) '
+            f'{{ Start-Sleep -Milliseconds 300 }}"',
+            "echo [app exited] running installer >> %LOG%",
             f'"{setup_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS',
+            "echo [installer done] exit code %errorlevel% >> %LOG%",
+            f'echo [starting app] "{app_exe}" >> %LOG%',
             f'start "" "{app_exe}"',
+            "echo [start issued] >> %LOG%",
             f'del "{setup_path}"',
             'del "%~f0"',
         ]
@@ -579,7 +588,7 @@ def _run_update(download_url: str, version: str, changelog: str) -> None:
 
         subprocess.Popen(
             ["cmd", "/c", str(bat_path)],
-            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+            creationflags=subprocess.CREATE_NO_WINDOW,
             close_fds=True,
         )
 
@@ -955,18 +964,26 @@ HTML = r"""<!doctype html>
   #whatsnew-close:hover { background: var(--accent-blue-hover); }
 
   /* grid-rows collapse (see .toolbar-collapse note above) so the banner's
-     appearance/dismissal is one continuous motion, not a hard cut. */
+     appearance/dismissal is one continuous motion, not a hard cut.
+     Important: the grid ITEM itself (.update-banner, .update-changelog-inner)
+     must carry no padding/border/margin of its own - a 0fr/1fr row's size
+     floors out at its item's own box-model additions regardless of
+     min-height:0, so any spacing/border/background has to live one level
+     deeper, on a plain child that isn't itself the grid item. */
   .update-collapse {
     display: grid; grid-template-rows: 0fr; overflow: hidden;
     transition: grid-template-rows .32s var(--ease-out), margin-bottom .32s var(--ease-out);
   }
   .update-collapse.open { grid-template-rows: 1fr; margin-bottom: 12px; }
   .update-banner {
-    min-height: 0; background: var(--bg-card); border: 1px solid var(--accent-blue);
-    border-radius: var(--radius-md); padding: 12px 16px; display: flex; flex-direction: column;
-    gap: 4px; opacity: 0; transition: opacity .32s var(--ease-out);
+    min-height: 0; overflow: hidden; opacity: 0; transition: opacity .32s var(--ease-out);
   }
   .update-collapse.open .update-banner { opacity: 1; }
+  .update-banner-inner {
+    background: var(--bg-card); border: 1px solid var(--accent-blue);
+    border-radius: var(--radius-md); padding: 12px 16px; display: flex; flex-direction: column;
+    gap: 4px;
+  }
   .update-banner-row { display: flex; align-items: center; gap: 8px; }
   .update-banner-title { font-size: 13px; font-weight: 700; flex: 1; }
   .update-banner-title .v { color: var(--text-faint); font-weight: 700; }
@@ -981,8 +998,9 @@ HTML = r"""<!doctype html>
     transition: grid-template-rows .32s var(--ease-out);
   }
   .update-changelog.open { grid-template-rows: 1fr; }
-  .update-changelog pre {
-    min-height: 0; margin: 6px 0 0; font-family: inherit; font-size: 12px; color: var(--text-muted);
+  .update-changelog-inner { min-height: 0; overflow: hidden; }
+  .update-changelog-inner pre {
+    margin: 6px 0 0; font-family: inherit; font-size: 12px; color: var(--text-muted);
     white-space: pre-wrap; max-height: 160px; overflow-y: auto;
   }
   .update-progress {
@@ -1022,19 +1040,23 @@ HTML = r"""<!doctype html>
 
   <div class="update-collapse" id="update-collapse">
     <div class="update-banner" id="update-banner">
-      <div class="update-banner-row">
-        <div class="update-banner-title">Update available <span class="v" id="update-version"></span></div>
-        <button class="ghost-btn" id="update-toggle-log" type="button">What's new</button>
-        <button class="update-now-btn" id="update-now-btn" type="button">Update Now</button>
-        <button class="icon-btn" id="update-dismiss" title="Dismiss" type="button">&#10005;</button>
+      <div class="update-banner-inner">
+        <div class="update-banner-row">
+          <div class="update-banner-title">Update available <span class="v" id="update-version"></span></div>
+          <button class="ghost-btn" id="update-toggle-log" type="button">What's new</button>
+          <button class="update-now-btn" id="update-now-btn" type="button">Update Now</button>
+          <button class="icon-btn" id="update-dismiss" title="Dismiss" type="button">&#10005;</button>
+        </div>
+        <div class="update-changelog" id="update-changelog-collapse">
+          <div class="update-changelog-inner">
+            <pre id="update-changelog-text"></pre>
+          </div>
+        </div>
+        <div class="update-progress hidden" id="update-progress">
+          <div class="update-progress-fill" id="update-progress-fill"></div>
+        </div>
+        <div class="update-error" id="update-error"></div>
       </div>
-      <div class="update-changelog" id="update-changelog-collapse">
-        <pre id="update-changelog-text"></pre>
-      </div>
-      <div class="update-progress hidden" id="update-progress">
-        <div class="update-progress-fill" id="update-progress-fill"></div>
-      </div>
-      <div class="update-error" id="update-error"></div>
     </div>
   </div>
 
@@ -1595,8 +1617,14 @@ HTML = r"""<!doctype html>
     if (!window.pywebview) return;
     try {
       const info = await window.pywebview.api.check_for_update();
-      if (info && info.available) showUpdateBanner(info);
-    } catch (e) { /* update checks should never interrupt normal use */ }
+      if (info && info.available) {
+        showUpdateBanner(info);
+      } else if (info && info.error) {
+        document.getElementById("log-output").textContent += "Update check failed: " + info.error + "\n";
+      }
+    } catch (e) {
+      document.getElementById("log-output").textContent += "Update check failed: " + e + "\n";
+    }
   }
 
   async function checkPendingChangelog() {
@@ -1644,11 +1672,33 @@ HTML = r"""<!doctype html>
     checkForUpdate();
   }
 
+  // pywebview injects window.pywebview asynchronously, and it can arrive a
+  // few ms after this script starts running - checking it once, synchronously,
+  // to decide whether to listen for "pywebviewready" is a race: if it loses,
+  // no listener is ever attached and the ready event fires to nobody. Always
+  // listen for it, and use DOMContentLoaded only as a timed fallback for
+  // viewing this HTML directly in a plain browser with no Python bridge.
+  let inited = false;
+  function safeInit() {
+    if (inited) return;
+    inited = true;
+    init();
+  }
+  window.addEventListener("pywebviewready", safeInit);
   if (window.pywebview) {
-    window.addEventListener("pywebviewready", init);
+    safeInit();
   } else {
-    // fallback for local browser preview without the Python bridge
-    window.addEventListener("DOMContentLoaded", init);
+    window.addEventListener("DOMContentLoaded", () => {
+      let attempts = 0;
+      const poll = setInterval(() => {
+        attempts++;
+        if (inited) { clearInterval(poll); return; }
+        if (window.pywebview || attempts >= 20) {
+          clearInterval(poll);
+          safeInit();
+        }
+      }, 100);
+    });
   }
 </script>
 </body>
