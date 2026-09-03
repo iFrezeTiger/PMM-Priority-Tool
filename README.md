@@ -1,6 +1,12 @@
+<img src="screenshots/logo.png" width="72" align="left">
+
 # PMM Priority Tool
 
 A small Windows GUI tool for prioritizing AI traffic model libraries in [vPilot](https://vpilot.rosscarlson.dev/) custom rule sets, built around [Perfect Model Matching](https://flightsim.to/addon/81299/perfect-model-matching) (PMM) — a community-made `.vmr` creator that merges several AI traffic add-ons into one combined model-matching rule set.
+
+<br clear="left">
+
+![Priority tab with a loaded file](screenshots/loaded.png)
 
 ## Why this exists
 
@@ -23,6 +29,8 @@ This tool takes a merged `.vmr` file (like PMM's) and **splits it into one `.vmr
 Download the latest `PMM_Priority_Tool_Setup.exe` from [Releases](https://github.com/iFrezeTiger/PMM-Priority-Tool/releases) and run it. It's a per-user install — no admin rights required.
 
 ## Usage
+
+![Priority tab before a file is loaded](screenshots/empty-state.png)
 
 1. Open **PMM Priority Tool**.
 2. Load your `.vmr` file (e.g. `PerfectModelMatching.vmr`).
