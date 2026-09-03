@@ -74,7 +74,7 @@ import urllib.request
 from collections import Counter
 from pathlib import Path
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 # GitHub repo the auto-updater checks for new releases (owner/repo). Each
 # release's tag must be "vX.Y.Z" matching APP_VERSION below, with the built
@@ -800,7 +800,7 @@ HTML = r"""<!doctype html>
      instead of sitting still and then snapping once max-height dips below content size. */
   .toolbar-collapse {
     display: grid; grid-template-rows: 1fr; overflow: hidden;
-    margin-top: 0; margin-bottom: 8px;
+    margin-top: 0; margin-bottom: 0;
     transition: grid-template-rows .32s var(--ease-out),
       margin-bottom .32s var(--ease-out), margin-top .32s var(--ease-out);
   }
@@ -972,9 +972,11 @@ HTML = r"""<!doctype html>
      deeper, on a plain child that isn't itself the grid item. */
   .update-collapse {
     display: grid; grid-template-rows: 0fr; overflow: hidden;
-    transition: grid-template-rows .32s var(--ease-out), margin-bottom .32s var(--ease-out);
+    margin-top: -12px;
+    transition: grid-template-rows .32s var(--ease-out),
+      margin-bottom .32s var(--ease-out), margin-top .32s var(--ease-out);
   }
-  .update-collapse.open { grid-template-rows: 1fr; margin-bottom: 12px; }
+  .update-collapse.open { grid-template-rows: 1fr; margin-top: 0; }
   .update-banner {
     min-height: 0; overflow: hidden; opacity: 0; transition: opacity .32s var(--ease-out);
   }
@@ -995,22 +997,24 @@ HTML = r"""<!doctype html>
   .update-now-btn:disabled { opacity: .5; cursor: default; }
   .update-changelog {
     display: grid; grid-template-rows: 0fr; overflow: hidden;
-    transition: grid-template-rows .32s var(--ease-out);
+    margin-top: -4px;
+    transition: grid-template-rows .32s var(--ease-out), margin-top .32s var(--ease-out);
   }
-  .update-changelog.open { grid-template-rows: 1fr; }
+  .update-changelog.open { grid-template-rows: 1fr; margin-top: 0; }
   .update-changelog-inner { min-height: 0; overflow: hidden; }
   .update-changelog-inner pre {
     margin: 6px 0 0; font-family: inherit; font-size: 12px; color: var(--text-muted);
     white-space: pre-wrap; max-height: 160px; overflow-y: auto;
   }
   .update-progress {
-    height: 4px; border-radius: var(--radius-pill); background: var(--bg-main); overflow: hidden; margin-top: 4px;
+    height: 4px; border-radius: var(--radius-pill); background: var(--bg-main); overflow: hidden;
   }
   .update-progress.hidden { display: none; }
   .update-progress-fill {
     height: 100%; background: var(--accent-blue); width: 0%; transition: width .2s var(--ease-out);
   }
   .update-error { color: var(--accent-red); font-size: 11px; }
+  .update-error:empty { margin-top: -4px; }
 
   /* Fluid press feedback, applied to every clickable button in the app. */
   .ghost-btn, .tab-btn, .icon-btn, #btn-add, #btn-load, .primary-btn,
