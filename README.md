@@ -6,7 +6,9 @@ A small Windows GUI tool for prioritizing AI traffic model libraries in [vPilot]
 
 <br clear="left">
 
-![Priority tab with a loaded file](screenshots/loaded.png)
+<p align="center">
+  <img src="screenshots/loaded.png" alt="Priority tab with a loaded file" width="500">
+</p>
 
 ## Why this exists
 
@@ -30,7 +32,9 @@ Download the latest `PMM_Priority_Tool_Setup.exe` from [Releases](https://github
 
 ## Usage
 
-![Priority tab before a file is loaded](screenshots/empty-state.png)
+<p align="center">
+  <img src="screenshots/empty-state.png" alt="Priority tab before a file is loaded" width="500">
+</p>
 
 1. Open **PMM Priority Tool**.
 2. Load your `.vmr` file (e.g. `PerfectModelMatching.vmr`).
