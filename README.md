@@ -33,7 +33,7 @@ Download the latest `PMM_Priority_Tool_Setup.exe` from [Releases](https://github
 ## Usage
 
 <p align="center">
-  <img src="screenshots/empty-state.png" alt="Priority tab before a file is loaded" width="500">
+  <img src="screenshots/demo.gif" alt="Loading a .vmr file, reordering libraries, and creating the split rule sets" width="500">
 </p>
 
 1. Open **PMM Priority Tool**.
