@@ -869,7 +869,7 @@ HTML = r"""<!doctype html>
   .empty-state .subtitle { font-size: 12px; color: var(--text-muted); max-width: 260px; }
 
   .loading-overlay {
-    position: absolute; inset: 0; background: rgba(20,20,22,.85); border-radius: var(--radius-md);
+    position: absolute; inset: 0; background: var(--bg-card); border-radius: var(--radius-md);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 12px; z-index: 30;
   }
@@ -984,7 +984,7 @@ HTML = r"""<!doctype html>
   .update-banner-inner {
     background: var(--bg-card); border: 1px solid var(--accent-blue);
     border-radius: var(--radius-md); padding: 12px 16px; display: flex; flex-direction: column;
-    gap: 4px;
+    gap: 8px;
   }
   .update-banner-row { display: flex; align-items: center; gap: 8px; }
   .update-banner-title { font-size: 13px; font-weight: 700; flex: 1; }
@@ -997,24 +997,24 @@ HTML = r"""<!doctype html>
   .update-now-btn:disabled { opacity: .5; cursor: default; }
   .update-changelog {
     display: grid; grid-template-rows: 0fr; overflow: hidden;
-    margin-top: -4px;
+    margin-top: -8px;
     transition: grid-template-rows .32s var(--ease-out), margin-top .32s var(--ease-out);
   }
   .update-changelog.open { grid-template-rows: 1fr; margin-top: 0; }
   .update-changelog-inner { min-height: 0; overflow: hidden; }
   .update-changelog-inner pre {
-    margin: 6px 0 0; font-family: inherit; font-size: 12px; color: var(--text-muted);
+    margin: -4px 0 0; font-family: inherit; font-size: 12px; color: var(--text-muted);
     white-space: pre-wrap; max-height: 160px; overflow-y: auto;
   }
   .update-progress {
-    height: 4px; border-radius: var(--radius-pill); background: var(--bg-main); overflow: hidden;
+    height: 4px; margin-top: 4px; border-radius: var(--radius-pill); background: var(--bg-main); overflow: hidden;
   }
   .update-progress.hidden { display: none; }
   .update-progress-fill {
     height: 100%; background: var(--accent-blue); width: 0%; transition: width .2s var(--ease-out);
   }
   .update-error { color: var(--accent-red); font-size: 11px; }
-  .update-error:empty { margin-top: -4px; }
+  .update-error:empty { margin-top: -8px; }
 
   /* Fluid press feedback, applied to every clickable button in the app. */
   .ghost-btn, .tab-btn, .icon-btn, #btn-add, #btn-load, .primary-btn,
@@ -1578,7 +1578,7 @@ HTML = r"""<!doctype html>
   function toggleUpdateChangelog() {
     updateChangelogOpen = !updateChangelogOpen;
     document.getElementById("update-changelog-collapse").classList.toggle("open", updateChangelogOpen);
-    document.getElementById("update-toggle-log").textContent = updateChangelogOpen ? "Hide" : "What's new";
+    document.getElementById("update-toggle-log").textContent = updateChangelogOpen ? "Show less" : "What's new";
   }
 
   function dismissUpdateBanner() {
