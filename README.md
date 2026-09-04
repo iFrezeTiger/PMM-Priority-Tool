@@ -39,7 +39,7 @@ Download the latest `PMM_Priority_Tool_Setup.exe` from [Releases](https://github
 1. Open **PMM Priority Tool**.
 2. Load your `.vmr` file (e.g. `PerfectModelMatching.vmr`).
 3. Review the auto-detected libraries and reorder them by priority, adding any custom ones you need.
-4. Click to split — the tool writes one numbered `.vmr` file per library into a `<your file>_split` folder next to the input file (the GUI doesn't currently offer a custom output location; use the CLI's `OUTPUT_DIR` argument for that).
+4. Click **Create VMR** — the tool writes one numbered `.vmr` file per library into a `<your file>_split` folder next to the input file (the GUI doesn't currently offer a custom output location; use the CLI's `OUTPUT_DIR` argument for that).
 5. In vPilot, go to **Settings > Model Matching (MSFS or MSFS 2024) > Custom Rules**, click **Add Custom Rule Set(s)**, select all the generated files, then use **Move Up / Move Down** so they match the numeric order shown in the filenames.
 
 ### Command line
