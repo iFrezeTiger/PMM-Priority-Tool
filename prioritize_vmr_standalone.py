@@ -269,6 +269,29 @@ def _extend_prefix(prefix: str, members: list, threshold: float = 0.9, max_exten
     return current
 
 
+def _read_vmr_text(input_path: Path) -> str:
+    """Reads a .vmr file as text, translating the raw OS/decode exceptions
+    into a message a non-programmer can act on - e.g. a binary file picked
+    via the "All files" option in the file dialog would otherwise surface
+    a bare `UnicodeDecodeError` straight to the on-screen log."""
+    try:
+        return input_path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError(
+            f"{input_path.name} doesn't look like a valid .vmr file (couldn't read it as "
+            "text) - make sure you selected an actual vPilot model-matching rule file."
+        ) from None
+    except FileNotFoundError:
+        raise ValueError(f"File not found: {input_path}") from None
+    except PermissionError:
+        raise ValueError(
+            f"Couldn't open {input_path.name} - it may be open in another program, or you "
+            "may not have permission to read it."
+        ) from None
+    except IsADirectoryError:
+        raise ValueError(f"{input_path.name} is a folder, not a file.") from None
+
+
 def detect_libraries_from_file(input_path: Path, min_count: int = 5, max_candidates: int = 12) -> list:
     """
     Scans a PMM .vmr file and guesses which "libraries" it contains, by
@@ -280,7 +303,7 @@ def detect_libraries_from_file(input_path: Path, min_count: int = 5, max_candida
     Returns candidates sorted by how many models matched, most common
     first, so the caller can decide how many to actually use.
     """
-    text = input_path.read_text(encoding="utf-8-sig")
+    text = _read_vmr_text(input_path)
 
     names_by_first_token: dict = {}
     for model_match in MODEL_RULE_RE.finditer(text):
@@ -326,15 +349,16 @@ def process_split(input_path: Path, output_dir: Path, library_defs: list = None)
     empty after STUB-style exclusion are dropped, same as before.
     """
     library_defs = library_defs if library_defs is not None else build_default_libraries()
-    text = input_path.read_text(encoding="utf-8-sig")
+    text = _read_vmr_text(input_path)
 
     rule_matches = list(FULL_RULE_RE.finditer(text))
-    if rule_matches:
-        header = text[:rule_matches[0].start()]
-        footer = text[rule_matches[-1].end():]
-    else:
-        header = text
-        footer = ""
+    if not rule_matches:
+        raise ValueError(
+            f"No ModelMatchRule entries found in {input_path.name} - is this a valid "
+            "vPilot .vmr file?"
+        )
+    header = text[:rule_matches[0].start()]
+    footer = text[rule_matches[-1].end():]
 
     order_labels = [entry["label"] for entry in library_defs] + ["Other"]
     buckets = {label: [] for label in order_labels}
@@ -1527,6 +1551,7 @@ HTML = r"""<!doctype html>
       logEl.textContent += "ERROR: " + result.error + "\n";
       showStatus("error", "error - see log");
       setFileStatus("error", picked.name);
+      switchTab("log");
       hideLoading();
       return;
     }
@@ -1559,6 +1584,7 @@ HTML = r"""<!doctype html>
       logEl.textContent += "ERROR: " + result.error + "\n";
       showStatus("error", "error - see log");
       setFileStatus("error", loadedFileName);
+      switchTab("log");
       hideLoading();
       return;
     }
@@ -1582,6 +1608,7 @@ HTML = r"""<!doctype html>
     if (result.error) {
       logEl.textContent += "ERROR: " + result.error + "\n";
       showStatus("error", "error - see log");
+      switchTab("log");
     } else {
       const banner = "=".repeat(50);
       logEl.textContent += banner + "\n";
