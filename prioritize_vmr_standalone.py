@@ -1050,7 +1050,16 @@ HTML = r"""<!doctype html>
     height: 100%; background: var(--accent-blue); width: 0%; transition: width .2s var(--ease-out);
   }
   .update-error { color: var(--accent-red); font-size: 11px; }
+  .update-error.status { color: var(--text-muted); }
   .update-error:empty { margin-top: -8px; }
+  /* height/line-height on .pct-digit-col and .pct-digit-val are set inline
+     from JS, measured off the real rendered text - see ensurePctRoll(). A
+     guessed CSS multiplier (line-height: 1.4 etc.) doesn't reliably match
+     Segoe UI's actual metrics and made the whole banner render taller. */
+  .pct-roll { display: inline-flex; vertical-align: text-bottom; }
+  .pct-digit-col { display: inline-block; overflow: hidden; position: relative; }
+  .pct-digit-track { display: flex; flex-direction: column; transition: transform .18s var(--ease-out); }
+  .pct-digit-val { display: block; text-align: center; font-variant-numeric: tabular-nums; }
 
   /* Fluid press feedback, applied to every clickable button in the app. */
   .ghost-btn, .tab-btn, .icon-btn, #btn-add, #btn-load, .primary-btn,
@@ -1606,7 +1615,9 @@ HTML = r"""<!doctype html>
     updateInfo = info;
     document.getElementById("update-version").textContent = "v" + info.version;
     document.getElementById("update-changelog-text").textContent = info.changelog || "No changelog provided.";
-    document.getElementById("update-error").textContent = "";
+    const errEl = document.getElementById("update-error");
+    errEl.textContent = "";
+    errEl.classList.remove("status");
     document.getElementById("update-progress").classList.add("hidden");
     document.getElementById("update-collapse").classList.add("open");
   }
@@ -1621,6 +1632,132 @@ HTML = r"""<!doctype html>
     document.getElementById("update-collapse").classList.remove("open");
   }
 
+  // Per-digit odometer for the "NN%" in the downloading status line -
+  // swapping the number via textContent every poll tick reads as flicker, so
+  // instead each digit that actually changed slides out while its new digit
+  // slides in (50 -> 60 only rolls the tens digit; the "%" is a static text
+  // node outside the roller and is never touched by an update).
+  let pctRoll = null; // {wrapper, cols: [{col, track, current}], value} once
+                       // built; torn down whenever setUpdateStatusText/error
+                       // path replaces #update-error's content
+
+  function setUpdateStatusText(text) {
+    const el = document.getElementById("update-error");
+    el.textContent = text;
+    el.classList.add("status");
+    pctRoll = null; // el.textContent just tore down any roller markup
+  }
+
+  function buildDigitCol(digit, lineHeightPx) {
+    const col = document.createElement("span");
+    col.className = "pct-digit-col";
+    col.style.height = lineHeightPx + "px";
+    col.style.lineHeight = lineHeightPx + "px";
+    const track = document.createElement("span");
+    track.className = "pct-digit-track";
+    const current = document.createElement("span");
+    current.className = "pct-digit-val";
+    current.style.height = lineHeightPx + "px";
+    current.style.lineHeight = lineHeightPx + "px";
+    current.textContent = digit;
+    track.appendChild(current);
+    col.appendChild(track);
+    return { col, track, current };
+  }
+
+  function ensurePctRoll() {
+    const el = document.getElementById("update-error");
+    if (pctRoll && pctRoll.wrapper.parentElement === el) return pctRoll;
+    el.textContent = "";
+    el.classList.add("status");
+    el.appendChild(document.createTextNode("downloading update... "));
+    // Match the roller's row height to how this same text actually renders,
+    // rather than guessing a CSS line-height multiplier - a guess doesn't
+    // reliably match Segoe UI's real metrics and made the whole banner
+    // render taller than it should.
+    const lineHeightPx = el.getBoundingClientRect().height;
+    const wrapper = document.createElement("span");
+    wrapper.className = "pct-roll";
+    el.appendChild(wrapper);
+    el.appendChild(document.createTextNode("%")); // static - never rebuilt by a digit update
+    pctRoll = { wrapper, cols: [], value: null, lineHeightPx };
+    return pctRoll;
+  }
+
+  // Settles a column to a single child at rest, discarding any digit left
+  // mid-flight by a poll tick arriving before the previous one's
+  // transitionend fired.
+  function settleDigitCol(colObj) {
+    Array.from(colObj.track.children).forEach((child) => { if (child !== colObj.current) child.remove(); });
+    colObj.track.style.transition = "none";
+    colObj.track.style.transform = "translateY(0)";
+    void colObj.track.offsetHeight;
+    colObj.track.style.transition = "";
+  }
+
+  function animateDigitCol(colObj, newDigit, goingUp, lineHeightPx) {
+    settleDigitCol(colObj);
+    const outgoing = colObj.current;
+    const incoming = document.createElement("span");
+    incoming.className = "pct-digit-val";
+    incoming.style.height = lineHeightPx + "px";
+    incoming.style.lineHeight = lineHeightPx + "px";
+    incoming.textContent = newDigit;
+
+    if (goingUp) {
+      colObj.track.appendChild(incoming);
+      requestAnimationFrame(() => { colObj.track.style.transform = "translateY(-50%)"; });
+    } else {
+      colObj.track.insertBefore(incoming, outgoing);
+      colObj.track.style.transition = "none";
+      colObj.track.style.transform = "translateY(-50%)";
+      void colObj.track.offsetHeight;
+      colObj.track.style.transition = "";
+      requestAnimationFrame(() => { colObj.track.style.transform = "translateY(0)"; });
+    }
+    colObj.current = incoming;
+
+    colObj.track.addEventListener("transitionend", function onEnd() {
+      colObj.track.removeEventListener("transitionend", onEnd);
+      outgoing.remove();
+      colObj.track.style.transition = "none";
+      colObj.track.style.transform = "translateY(0)";
+      void colObj.track.offsetHeight;
+      colObj.track.style.transition = "";
+    });
+  }
+
+  function setDownloadPercent(pct) {
+    const roll = ensurePctRoll();
+    if (pct === roll.value) return;
+
+    const newDigits = String(pct).split("");
+
+    // Digit count changed (crossing 9<->10, 99<->100, or the first build) -
+    // rare enough that a plain rebuild (no per-digit roll) is fine rather
+    // than animating a column sliding in/out of existence.
+    if (roll.cols.length !== newDigits.length) {
+      roll.wrapper.innerHTML = "";
+      roll.cols = newDigits.map((d) => {
+        const built = buildDigitCol(d, roll.lineHeightPx);
+        roll.wrapper.appendChild(built.col);
+        return built;
+      });
+      roll.value = pct;
+      return;
+    }
+
+    // roll.cols.length matching newDigits.length means String(roll.value) is
+    // necessarily the same length too, so no alignment/padding is needed here.
+    const oldDigits = String(roll.value).split("");
+    const goingUp = pct > roll.value;
+    for (let i = 0; i < newDigits.length; i++) {
+      if (oldDigits[i] === newDigits[i]) continue; // this digit didn't change - leave it alone
+      animateDigitCol(roll.cols[i], newDigits[i], goingUp, roll.lineHeightPx);
+    }
+    roll.value = pct;
+  }
+
   function pollUpdateProgress() {
     if (updatePolling) clearInterval(updatePolling);
     updatePolling = setInterval(async () => {
@@ -1628,15 +1765,21 @@ HTML = r"""<!doctype html>
       if (state.phase === "downloading") {
         const pct = state.total ? Math.min(100, Math.round((state.downloaded / state.total) * 100)) : 0;
         document.getElementById("update-progress-fill").style.width = pct + "%";
+        setDownloadPercent(pct);
       } else if (state.phase === "verifying") {
         document.getElementById("update-progress-fill").style.width = "100%";
+        setUpdateStatusText("verifying download...");
       } else if (state.phase === "restarting") {
         document.getElementById("update-progress-fill").style.width = "100%";
+        setUpdateStatusText("restarting...");
         // App is about to close itself and relaunch as the new version - nothing else to do.
       } else if (state.phase === "error") {
         clearInterval(updatePolling);
         updatePolling = null;
-        document.getElementById("update-error").textContent = state.error || "Update failed.";
+        const el = document.getElementById("update-error");
+        el.classList.remove("status");
+        el.textContent = state.error || "Update failed.";
+        pctRoll = null; // el.textContent just tore down any roller markup
         document.getElementById("update-now-btn").disabled = false;
         document.getElementById("update-dismiss").disabled = false;
       }
@@ -1647,7 +1790,7 @@ HTML = r"""<!doctype html>
     if (!updateInfo || !window.pywebview) return;
     document.getElementById("update-now-btn").disabled = true;
     document.getElementById("update-dismiss").disabled = true;
-    document.getElementById("update-error").textContent = "";
+    setDownloadPercent(0);
     document.getElementById("update-progress-fill").style.width = "0%";
     document.getElementById("update-progress").classList.remove("hidden");
     const res = await window.pywebview.api.start_update(
