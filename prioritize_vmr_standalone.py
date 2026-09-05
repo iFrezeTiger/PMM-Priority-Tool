@@ -63,6 +63,7 @@ Publishing a new release (for the in-app auto-updater):
     That's it - running apps pick it up on their next launch.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -515,6 +516,11 @@ def check_for_update_impl() -> dict:
         "changelog": release.get("body") or "",
         "download_url": asset["browser_download_url"],
         "asset_size": asset.get("size", 0),
+        # GitHub computes this server-side on upload, formatted "sha256:<hex>".
+        # Can be null for assets uploaded before GitHub added the field, or via
+        # some third-party upload paths - verification below falls back to a
+        # size-only check in that case.
+        "asset_digest": asset.get("digest"),
     }
 
 
@@ -532,7 +538,28 @@ def _get_update_state() -> dict:
         return dict(_UPDATE_STATE)
 
 
-def _run_update(download_url: str, version: str, changelog: str) -> None:
+def _verify_download(setup_path: Path, expected_size: int, expected_digest: str) -> str:
+    """Returns an error string if the downloaded installer doesn't check out,
+    or "" if it's good to run. Checked before the installer ever executes,
+    since a truncated/corrupted download would otherwise get silently run
+    with /VERYSILENT."""
+    actual_size = setup_path.stat().st_size
+    if expected_size and actual_size != expected_size:
+        return f"Downloaded file size ({actual_size} bytes) doesn't match the expected size ({expected_size} bytes)."
+
+    if expected_digest and expected_digest.startswith("sha256:"):
+        expected_hex = expected_digest.split(":", 1)[1].lower()
+        hasher = hashlib.sha256()
+        with open(setup_path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        if hasher.hexdigest() != expected_hex:
+            return "Downloaded file's checksum doesn't match GitHub's - the download may be corrupted."
+
+    return ""
+
+
+def _run_update(download_url: str, version: str, changelog: str, expected_size: int = 0, expected_digest: str = "") -> None:
     try:
         _set_update_state(phase="downloading", downloaded=0, total=0, error=None)
         tmp_dir = Path(tempfile.gettempdir())
@@ -540,7 +567,7 @@ def _run_update(download_url: str, version: str, changelog: str) -> None:
 
         req = urllib.request.Request(download_url, headers={"User-Agent": "PMM-Priority-Tool-Updater"})
         with urllib.request.urlopen(req, timeout=15) as resp, open(setup_path, "wb") as out:
-            total = int(resp.headers.get("Content-Length") or 0)
+            total = int(resp.headers.get("Content-Length") or 0) or expected_size
             _set_update_state(total=total)
             downloaded = 0
             while True:
@@ -550,6 +577,13 @@ def _run_update(download_url: str, version: str, changelog: str) -> None:
                 out.write(chunk)
                 downloaded += len(chunk)
                 _set_update_state(downloaded=downloaded)
+
+        _set_update_state(phase="verifying")
+        verify_error = _verify_download(setup_path, expected_size, expected_digest)
+        if verify_error:
+            setup_path.unlink(missing_ok=True)
+            _set_update_state(phase="error", error=verify_error)
+            return
 
         if not getattr(sys, "frozen", False):
             _set_update_state(phase="error", error="Auto-install only works in the built .exe, not a dev run.")
@@ -668,11 +702,13 @@ def run_gui() -> None:
             except Exception as exc:  # noqa: BLE001
                 return {"error": str(exc)}
 
-        def start_update(self, download_url, version, changelog):
-            if _get_update_state()["phase"] in ("downloading", "restarting"):
+        def start_update(self, download_url, version, changelog, asset_size=0, asset_digest=""):
+            if _get_update_state()["phase"] in ("downloading", "verifying", "restarting"):
                 return {"started": False}
             threading.Thread(
-                target=_run_update, args=(download_url, version, changelog), daemon=True
+                target=_run_update,
+                args=(download_url, version, changelog, asset_size or 0, asset_digest or ""),
+                daemon=True,
             ).start()
             return {"started": True}
 
@@ -1592,6 +1628,8 @@ HTML = r"""<!doctype html>
       if (state.phase === "downloading") {
         const pct = state.total ? Math.min(100, Math.round((state.downloaded / state.total) * 100)) : 0;
         document.getElementById("update-progress-fill").style.width = pct + "%";
+      } else if (state.phase === "verifying") {
+        document.getElementById("update-progress-fill").style.width = "100%";
       } else if (state.phase === "restarting") {
         document.getElementById("update-progress-fill").style.width = "100%";
         // App is about to close itself and relaunch as the new version - nothing else to do.
@@ -1612,7 +1650,10 @@ HTML = r"""<!doctype html>
     document.getElementById("update-error").textContent = "";
     document.getElementById("update-progress-fill").style.width = "0%";
     document.getElementById("update-progress").classList.remove("hidden");
-    const res = await window.pywebview.api.start_update(updateInfo.download_url, updateInfo.version, updateInfo.changelog);
+    const res = await window.pywebview.api.start_update(
+      updateInfo.download_url, updateInfo.version, updateInfo.changelog,
+      updateInfo.asset_size, updateInfo.asset_digest
+    );
     if (!res.started) return;
     pollUpdateProgress();
   }
