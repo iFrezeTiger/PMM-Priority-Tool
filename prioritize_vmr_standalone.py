@@ -799,6 +799,17 @@ def run_gui() -> None:
         except Exception:
             pass
 
+    def _handle_dropped_file(event):
+        files = (event.get("dataTransfer") or {}).get("files") or []
+        path = next((f["pywebviewFullPath"] for f in files if f.get("pywebviewFullPath")), None)
+        if path:
+            window.evaluate_js(f"handleDroppedFile({json.dumps(path)})")
+
+    def _enable_drag_drop():
+        from webview.dom import DOMEventHandler
+        window.dom.document.on("drop", DOMEventHandler(_handle_dropped_file, prevent_default=True))
+
+    window.events.loaded += _enable_drag_drop
     window.events.closing += on_closing
     webview.start()
 
@@ -959,7 +970,9 @@ HTML = r"""<!doctype html>
   .empty-state .icon { margin-bottom: 12px; color: var(--text-faint); }
   .empty-state .icon svg { width: 34px; height: 34px; display: block; }
   .empty-state .title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
-  .empty-state .subtitle { font-size: 12px; color: var(--text-muted); max-width: 260px; }
+  .empty-state .subtitle {
+    font-size: 12px; line-height: 1.4; color: var(--text-muted); max-width: 260px; min-height: calc(1.4em * 2);
+  }
 
   .loading-overlay {
     position: absolute; inset: 0; background: var(--bg-card); border-radius: var(--radius-md);
@@ -1055,6 +1068,34 @@ HTML = r"""<!doctype html>
   }
   #whatsnew-close { background: var(--accent-blue); color: #fff; border: none; }
   #whatsnew-close:hover { background: var(--accent-blue-hover); }
+
+  .drop-overlay {
+    position: absolute; inset: 0; z-index: 40; background: var(--bg-card); border-radius: var(--radius-md);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px;
+    opacity: 1; transition: opacity .18s var(--ease-out);
+  }
+  .drop-overlay.hidden { opacity: 0; pointer-events: none; }
+  /* Dims everything but the content-box while a file is dragged over the window (same
+     rgba(0,0,0,.55) scrim as .dialog-overlay, projected outward from the content-box's
+     own edges instead of a separate full-window element, so the "hole" stays exactly
+     the content-box's shape), and cross-fades that box's own content with the
+     drop-overlay above it, so the drop target reads as the one thing that matters. */
+  .content-box { transition: box-shadow .18s var(--ease-out); }
+  #app.dragging .content-box { box-shadow: 0 0 0 9999px rgba(0,0,0,.55); }
+  #app.dragging .content-box .view.active { opacity: .12; }
+  .drop-overlay .frame {
+    position: absolute; inset: 8px; border: 2px dashed var(--accent-blue); border-radius: calc(var(--radius-md) - 6px);
+    pointer-events: none;
+  }
+  .drop-overlay.invalid .frame { border-color: var(--accent-red); }
+  .drop-overlay .icon { color: var(--accent-blue); margin-bottom: 12px; }
+  .drop-overlay.invalid .icon { color: var(--accent-red); }
+  .drop-overlay .icon svg { width: 34px; height: 34px; display: block; }
+  .drop-overlay .title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+  .drop-overlay .subtitle {
+    font-size: 12px; line-height: 1.4; color: var(--text-muted); max-width: 280px; min-height: calc(1.4em * 2);
+  }
 
   /* grid-rows collapse (see .toolbar-collapse note above) so the banner's
      appearance/dismissal is one continuous motion, not a hard cut.
@@ -1212,6 +1253,13 @@ HTML = r"""<!doctype html>
     <div id="log-view" class="view">
       <pre id="log-output"></pre>
     </div>
+
+    <div class="drop-overlay hidden" id="drop-overlay">
+      <div class="frame"></div>
+      <div class="icon" id="drop-icon"></div>
+      <div class="title" id="drop-title">Drop to load</div>
+      <div class="subtitle" id="drop-subtitle"></div>
+    </div>
   </div>
 
   <div class="hint">Anything not matched by a library above is kept in its original order and tried last.</div>
@@ -1260,6 +1308,11 @@ HTML = r"""<!doctype html>
     "linear-gradient(135deg, #5eead4, #0d9488)",
   ];
   const ITEM_H = 70, GAP = 8, SLOT = ITEM_H + GAP;
+  const DROP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" '
+    + 'stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>';
+  const DROP_WARN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" '
+    + 'stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/>'
+    + '<path d="M10.3 3.9 1.9 18a1.5 1.5 0 0 0 1.3 2.2h17.6a1.5 1.5 0 0 0 1.3-2.2L13.7 3.9a1.5 1.5 0 0 0-2.6 0z"/></svg>';
 
   let libraries = [];      // [{label, mode, patterns, _uid}]
   let selectedUid = null;
@@ -1330,7 +1383,7 @@ HTML = r"""<!doctype html>
         ? '<div class="icon">' + SEARCH_ICON + '</div><div class="title">No libraries detected</div>'
           + '<div class="subtitle">Try "Re-detect from File", or add one manually.</div>'
         : '<div class="icon">' + FOLDER_ICON + '</div><div class="title">No file loaded</div>'
-          + '<div class="subtitle">Click "Load .vmr File..." to get started.</div>';
+          + '<div class="subtitle">Click "Load .vmr File...", or drop a file anywhere in this window.</div>';
       container.appendChild(empty);
       container.style.height = "100%";
       updateAllPositions();
@@ -1575,23 +1628,26 @@ HTML = r"""<!doctype html>
       showStatus("idle", loadedFilePath ? READY_TEXT : "waiting for a file");
       return;
     }
+    await loadFromPath(picked.path, picked.name);
+  }
 
-    setFileStatus("busy", picked.name);
-    showLoading("Scanning " + picked.name + "...");
-    const result = await window.pywebview.api.detect_or_load(picked.path);
+  async function loadFromPath(path, name) {
+    setFileStatus("busy", name);
+    showLoading("Scanning " + name + "...");
+    const result = await window.pywebview.api.detect_or_load(path);
     const logEl = document.getElementById("log-output");
     if (result.error) {
       logEl.textContent += "ERROR: " + result.error + "\n";
       showStatus("error", "error - see log");
-      setFileStatus("error", picked.name);
+      setFileStatus("error", name);
       switchTab("log");
       hideLoading();
       return;
     }
 
-    loadedFilePath = picked.path;
-    loadedFileName = picked.name;
-    setFileStatus("ok", picked.name);
+    loadedFilePath = path;
+    loadedFileName = name;
+    setFileStatus("ok", name);
     setFileDependentControlsEnabled(true);
 
     libraries = withUids(result.libraries);
@@ -1600,11 +1656,77 @@ HTML = r"""<!doctype html>
     persist();
 
     const headline = result.source === "saved"
-      ? "Loaded: " + picked.name + " (using your saved priority order)"
-      : "Loaded: " + picked.name + " (no saved order yet, detected from file)";
-    appendDetectedLog(picked.name, result.libraries, headline);
+      ? "Loaded: " + name + " (using your saved priority order)"
+      : "Loaded: " + name + " (no saved order yet, detected from file)";
+    appendDetectedLog(name, result.libraries, headline);
     hideLoading();
     showStatus("idle", READY_TEXT);
+  }
+
+  function setDropOverlay(mode, subtitle) {
+    const overlay = document.getElementById("drop-overlay");
+    overlay.classList.toggle("invalid", mode === "invalid");
+    document.getElementById("drop-icon").innerHTML = mode === "invalid" ? DROP_WARN_ICON : DROP_ICON;
+    document.getElementById("drop-title").textContent = mode === "invalid" ? "Not a .vmr file" : "Drop to load";
+    document.getElementById("drop-subtitle").textContent = subtitle;
+    overlay.classList.remove("hidden");
+    document.getElementById("app").classList.add("dragging");
+  }
+
+  function hideDropOverlay() {
+    document.getElementById("drop-overlay").classList.add("hidden");
+    document.getElementById("app").classList.remove("dragging");
+  }
+
+  // A dialog (Add/Edit Library, What's new) covers the same window a file could be
+  // dropped onto - dragging or dropping while one is open would show the overlay
+  // behind/around the dialog and could still swap out the loaded file underneath it.
+  function isModalOpen() {
+    return !document.getElementById("add-dialog-overlay").classList.contains("hidden")
+      || !document.getElementById("whatsnew-overlay").classList.contains("hidden");
+  }
+
+  // Called from Python (run_gui's document.on("drop", ...) handler) once it has
+  // resolved the real filesystem path - the plain browser drop event below only
+  // ever sees a filename, never a usable path.
+  function handleDroppedFile(path) {
+    hideDropOverlay();
+    if (isModalOpen()) return;
+    loadFromPath(path, path.split(/[\\/]/).pop());
+  }
+
+  function wireDragAndDrop() {
+    let dragDepth = 0;
+    let revertTimer = null;
+
+    document.addEventListener("dragenter", (e) => {
+      if (!e.dataTransfer || !e.dataTransfer.types.includes("Files") || isModalOpen()) return;
+      e.preventDefault();
+      dragDepth++;
+      clearTimeout(revertTimer);
+      setDropOverlay("hover", loadedFilePath ? "Replaces the current session." : "Release to load this .vmr.");
+    });
+    document.addEventListener("dragover", (e) => {
+      if (e.dataTransfer && e.dataTransfer.types.includes("Files") && !isModalOpen()) e.preventDefault();
+    });
+    document.addEventListener("dragleave", () => {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) hideDropOverlay();
+    });
+    document.addEventListener("drop", (e) => {
+      if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
+      dragDepth = 0;
+      if (isModalOpen()) { e.preventDefault(); return; }
+      e.preventDefault();
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file && !/\.vmr$/i.test(file.name)) {
+        setDropOverlay("invalid", '"' + file.name + '" - drop a .vmr file instead.');
+        revertTimer = setTimeout(hideDropOverlay, 1800);
+        return;
+      }
+      // A valid-looking drop falls through to Python's own drop listener, which
+      // resolves the real path and calls handleDroppedFile() above.
+    });
   }
 
   async function redetect() {
@@ -1906,6 +2028,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll(".tab-btn").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     });
+    wireDragAndDrop();
   }
 
   function init() {
