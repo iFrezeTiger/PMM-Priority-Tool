@@ -174,6 +174,32 @@ def save_window_state(x, y, width, height) -> None:
     _save_raw_config(data)
 
 
+def _clamp_window_to_screens(x: int, y: int, width: int, height: int, screens: list) -> tuple:
+    """Keeps a restored window position from landing somewhere unreachable -
+    e.g. it was last positioned on a second monitor that's since been
+    unplugged, or a monitor arrangement that's since changed. Neither
+    pywebview nor Windows itself guards against this: a window created at
+    coordinates outside every connected screen is placed exactly there and
+    left inaccessible, confirmed by testing a raw WinForms window the same
+    way. Only nudges the position when it wouldn't be reachable on any
+    currently connected screen; otherwise leaves it untouched."""
+    if not screens:
+        return x, y
+
+    visible = 40  # require at least this many px of the window on some screen
+    if any(
+        min(x + width, s.x + s.width) - max(x, s.x) >= visible
+        and min(y + height, s.y + s.height) - max(y, s.y) >= visible
+        for s in screens
+    ):
+        return x, y
+
+    nearest = min(screens, key=lambda s: (s.x - x) ** 2 + (s.y - y) ** 2)
+    clamped_x = min(max(x, nearest.x), nearest.x + max(nearest.width - width, 0))
+    clamped_y = min(max(y, nearest.y), nearest.y + max(nearest.height - height, 0))
+    return clamped_x, clamped_y
+
+
 def _save_pending_update(version: str, changelog: str) -> None:
     """Records that an update to `version` was just installed, so the next
     launch (the relaunch after install) can show its changelog once."""
@@ -750,8 +776,15 @@ def run_gui() -> None:
         "background_color": "#141416",
     }
     if "x" in saved_window and "y" in saved_window:
-        window_kwargs["x"] = saved_window["x"]
-        window_kwargs["y"] = saved_window["y"]
+        try:
+            screens = webview.screens
+        except Exception:
+            screens = []
+        window_kwargs["x"], window_kwargs["y"] = _clamp_window_to_screens(
+            saved_window["x"], saved_window["y"],
+            window_kwargs["width"], window_kwargs["height"],
+            screens,
+        )
 
     window = webview.create_window(
         "PMM Priority Tool",
