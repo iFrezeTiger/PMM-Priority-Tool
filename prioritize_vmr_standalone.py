@@ -871,18 +871,13 @@ HTML = r"""<!doctype html>
 
   .tabs {
     position: relative; display: flex; gap: 6px;
-    background: var(--bg-main); border-radius: var(--radius-pill); padding: 3px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-pill); padding: 3px;
   }
   .tab-indicator {
     position: absolute; top: 3px; bottom: 3px; left: 0; width: 0;
     border-radius: var(--radius-pill);
-    background: linear-gradient(180deg, #ffffff, #f0f0f2 100%);
-    box-shadow:
-      0 1px 3px rgba(0,0,0,.35),
-      0 0 0 1px rgba(255,255,255,.5) inset,
-      0 1px 0 rgba(255,255,255,.8) inset;
-    backdrop-filter: blur(6px) saturate(160%);
-    -webkit-backdrop-filter: blur(6px) saturate(160%);
+    background: #ffffff;
     transform: translateX(var(--indicator-x, 0px)) scale(var(--indicator-scale, 1));
     transition: transform .32s var(--ease-out), width .32s var(--ease-out);
     pointer-events: none;
@@ -892,7 +887,7 @@ HTML = r"""<!doctype html>
     transition-duration: .05s;
   }
   .tab-btn {
-    position: relative; z-index: 1;
+    position: relative; z-index: 1; flex: 1;
     background: transparent; border: none; color: var(--text-muted); font-weight: 700;
     font-size: 12px; padding: 7px 18px; border-radius: var(--radius-pill); cursor: pointer;
     transition: color .3s ease;
