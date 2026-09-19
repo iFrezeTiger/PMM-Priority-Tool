@@ -78,7 +78,7 @@ import urllib.request
 from collections import Counter
 from pathlib import Path
 
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 
 # GitHub repo the auto-updater checks for new releases (owner/repo). Each
 # release's tag must be "vX.Y.Z" matching APP_VERSION below, with the built
