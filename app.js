@@ -673,14 +673,21 @@
     if (!updateInfo || !window.pywebview) return;
     document.getElementById("update-now-btn").disabled = true;
     document.getElementById("update-dismiss").disabled = true;
-    setDownloadPercent(0);
-    document.getElementById("update-progress-fill").style.width = "0%";
-    document.getElementById("update-progress").classList.remove("hidden");
     const res = await window.pywebview.api.start_update(
       updateInfo.download_url, updateInfo.version, updateInfo.changelog,
       updateInfo.asset_size, updateInfo.asset_digest
     );
-    if (!res.started) return;
+    if (!res.started) {
+      // Backend already had an update in flight - re-enable rather than
+      // leaving the banner permanently stuck with no way to dismiss/retry.
+      setUpdateStatusText("An update is already in progress.");
+      document.getElementById("update-now-btn").disabled = false;
+      document.getElementById("update-dismiss").disabled = false;
+      return;
+    }
+    setDownloadPercent(0);
+    document.getElementById("update-progress-fill").style.width = "0%";
+    document.getElementById("update-progress").classList.remove("hidden");
     pollUpdateProgress();
   }
 
