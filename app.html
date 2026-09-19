@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+    <div class="title-block"><span class="app-title">PMM</span><span class="app-subtitle">Priority Tool</span><span class="app-version" id="app-version"></span></div>
+    <div class="spacer"></div>
+    <button class="ghost-btn" id="btn-reset" disabled>Re-detect from File</button>
+  </header>
+
+  <div class="update-collapse" id="update-collapse">
+    <div class="update-banner" id="update-banner">
+      <div class="update-banner-inner">
+        <div class="update-banner-row">
+          <div class="update-banner-title">Update available <span class="v" id="update-version"></span></div>
+          <button class="ghost-btn" id="update-toggle-log" type="button">What's new</button>
+          <button class="update-now-btn" id="update-now-btn" type="button">Update Now</button>
+          <button class="icon-btn" id="update-dismiss" title="Dismiss" type="button">&#10005;</button>
+        </div>
+        <div class="update-changelog" id="update-changelog-collapse">
+          <div class="update-changelog-inner">
+            <pre id="update-changelog-text"></pre>
+          </div>
+        </div>
+        <div class="update-progress hidden" id="update-progress">
+          <div class="update-progress-fill" id="update-progress-fill"></div>
+        </div>
+        <div class="update-error" id="update-error"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-card">
+    <div class="status-row">
+      <div class="dot" id="file-dot" style="background: var(--text-faint)"></div>
+      <div class="label">File</div>
+      <div class="value" id="file-name">none loaded</div>
+    </div>
+    <div class="status-row">
+      <div class="dot" id="lib-dot" style="background: var(--text-faint)"></div>
+      <div class="label">Libraries</div>
+      <div class="value" id="lib-count">-</div>
+    </div>
+    <div class="status-row">
+      <div class="dot" id="status-dot" style="background: var(--text-faint)"></div>
+      <div class="label">Status</div>
+      <div class="value" id="status-text">waiting for a file</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab-indicator" id="tab-indicator"></div>
+    <button class="tab-btn active" data-tab="priority">Priority</button>
+    <button class="tab-btn" data-tab="log">Log</button>
+  </div>
+
+  <div class="toolbar-collapse" id="toolbar-collapse">
+    <div class="toolbar">
+      <button class="icon-btn" id="btn-up" disabled>&#9650;</button>
+      <button class="icon-btn" id="btn-down" disabled>&#9660;</button>
+      <div class="spacer"></div>
+      <button id="btn-load">Load .vmr File...</button>
+      <button id="btn-add" disabled>+ Add Library...</button>
+    </div>
+  </div>
+
+  <div class="content-box">
+    <div id="priority-view" class="view active">
+      <div id="list-container"></div>
+      <div class="loading-overlay hidden" id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-text">Working...</div>
+      </div>
+    </div>
+
+    <div id="log-view" class="view">
+      <pre id="log-output"></pre>
+    </div>
+
+    <div class="drop-overlay hidden" id="drop-overlay">
+      <div class="frame"></div>
+      <div class="icon" id="drop-icon"></div>
+      <div class="title" id="drop-title">Drop to load</div>
+      <div class="subtitle" id="drop-subtitle"></div>
+    </div>
+  </div>
+
+  <div class="hint">Anything not matched by a library above is kept in its original order and tried last.</div>
+
+  <button class="primary-btn" id="btn-choose" disabled>Load a .vmr file first</button>
+
+</div>
+
+<div class="dialog-overlay hidden" id="add-dialog-overlay">
+  <div class="dialog">
+    <h3 id="dialog-title">Add Library</h3>
+    <label>Library name</label>
+    <input id="add-name" placeholder="e.g. My Custom Pack">
+    <label>Match type</label>
+    <select id="add-mode">
+      <option>Starts with</option>
+      <option>Contains</option>
+    </select>
+    <label>Match text (comma-separated for more than one)</label>
+    <input id="add-patterns" placeholder="e.g. MyPack_, MYPK">
+    <div class="dialog-error" id="add-error"></div>
+    <div class="dialog-buttons">
+      <button id="add-cancel">Cancel</button>
+      <button id="add-submit">Add</button>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-overlay hidden" id="whatsnew-overlay">
+  <div class="dialog whatsnew-dialog">
+    <h3>What's new in v<span id="whatsnew-version"></span></h3>
+    <pre id="whatsnew-text"></pre>
+    <div class="dialog-buttons">
+      <button id="whatsnew-close">Got it</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

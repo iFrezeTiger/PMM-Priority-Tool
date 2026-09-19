@@ -5,7 +5,7 @@ a = Analysis(
     ['prioritize_vmr_standalone.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('app.html', '.'), ('app.css', '.'), ('app.js', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
