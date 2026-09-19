@@ -166,6 +166,7 @@
     function onUp() {
       node.removeEventListener("pointermove", onMove);
       node.removeEventListener("pointerup", onUp);
+      node.removeEventListener("pointercancel", onUp);
       node.classList.remove("dragging");
       dragState = null;
       const finalIdx = libraries.findIndex((l) => l._uid === uid);
@@ -177,6 +178,13 @@
 
     node.addEventListener("pointermove", onMove);
     node.addEventListener("pointerup", onUp);
+    // A gesture can end in a pointercancel instead of pointerup - window losing
+    // focus mid-drag, or the OS/touch input cancelling the pointer. Without this,
+    // dragState/the "dragging" class/these listeners never clear, leaving the
+    // pill stuck: its leftover onMove handler keeps firing on plain hover
+    // (pointermove fires on any movement over the element, not just captured
+    // drags) and yanks it to wherever the stale dragStartY math says.
+    node.addEventListener("pointercancel", onUp);
   }
 
   function persist() {
