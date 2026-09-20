@@ -315,6 +315,74 @@
   }
 
   let editingUid = null;
+  let dialogSubmitAttempted = false;
+  let matchPreviewToken = 0;
+  let matchPreviewDebounce = null;
+
+  function setDialogMessage(cls, text) {
+    const el = document.getElementById("add-error");
+    el.className = "dialog-error dialog-message " + cls;
+    el.textContent = text;
+  }
+
+  function readDialogPatterns() {
+    return document.getElementById("add-patterns").value.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+
+  // Applies whichever part of the shared message line doesn't need a
+  // backend round-trip (the two "still missing" validation errors, and the
+  // neutral pre-typing hint). Returns true when a match-count fetch is
+  // still needed to finish the message.
+  function refreshDialogMessage() {
+    const name = document.getElementById("add-name").value.trim();
+    const patterns = readDialogPatterns();
+    if (dialogSubmitAttempted && !name) {
+      setDialogMessage("error", "Please enter a library name.");
+      return false;
+    }
+    if (dialogSubmitAttempted && !patterns.length) {
+      setDialogMessage("error", "Please enter at least one match text.");
+      return false;
+    }
+    if (!patterns.length) {
+      setDialogMessage("neutral", "Type a pattern to preview matches");
+      return false;
+    }
+    return true;
+  }
+
+  // Builds the library list as it would look if the dialog were submitted
+  // right now (current field values, in the entry's real position - end of
+  // the list for a new library, same index for one being edited), so the
+  // backend can run the exact same priority-order matching create_vmr uses.
+  function buildPreviewLibs() {
+    const name = document.getElementById("add-name").value.trim();
+    const mode = document.getElementById("add-mode").value === "Contains" ? "contains" : "prefix";
+    const patterns = readDialogPatterns();
+    const draft = { label: name, mode, patterns };
+    const libs = stripUids(libraries);
+    const index = editingUid ? libraries.findIndex((l) => l._uid === editingUid) : libs.length;
+    libs[index] = draft;
+    return { libs, index };
+  }
+
+  async function fetchMatchCount() {
+    if (!window.pywebview || !loadedFilePath) return;
+    const token = ++matchPreviewToken;
+    const { libs, index } = buildPreviewLibs();
+    const result = await window.pywebview.api.preview_match_counts(loadedFilePath, libs);
+    if (token !== matchPreviewToken) return; // superseded by a newer keystroke
+    if (!result || result.error || !Array.isArray(result.counts)) return;
+    const count = result.counts[index];
+    if (count === 0) setDialogMessage("zero", "No models match yet");
+    else setDialogMessage("some", count + " model" + (count === 1 ? "" : "s") + " match" + (count === 1 ? "es" : ""));
+  }
+
+  function scheduleMatchPreview() {
+    clearTimeout(matchPreviewDebounce);
+    if (!refreshDialogMessage()) return;
+    matchPreviewDebounce = setTimeout(fetchMatchCount, 150);
+  }
 
   function openDialog(uid) {
     editingUid = uid || null;
@@ -324,7 +392,8 @@
     document.getElementById("add-name").value = entry ? entry.label : "";
     document.getElementById("add-mode").value = entry && entry.mode === "contains" ? "Contains" : "Starts with";
     document.getElementById("add-patterns").value = entry ? entry.patterns.join(", ") : "";
-    document.getElementById("add-error").textContent = "";
+    dialogSubmitAttempted = false;
+    scheduleMatchPreview();
     document.getElementById("add-dialog-overlay").classList.remove("hidden");
     document.getElementById("add-name").focus();
   }
@@ -332,17 +401,18 @@
   function closeDialog() {
     document.getElementById("add-dialog-overlay").classList.add("hidden");
     editingUid = null;
+    clearTimeout(matchPreviewDebounce);
+    matchPreviewToken++; // invalidate any in-flight preview fetch
   }
 
   function submitDialog() {
+    dialogSubmitAttempted = true;
     const name = document.getElementById("add-name").value.trim();
     const mode = document.getElementById("add-mode").value === "Contains" ? "contains" : "prefix";
-    const patterns = document.getElementById("add-patterns").value.split(",").map((s) => s.trim()).filter(Boolean);
-    const errEl = document.getElementById("add-error");
-    if (!name) { errEl.textContent = "Please enter a library name."; return; }
-    if (!patterns.length) { errEl.textContent = "Please enter at least one match text."; return; }
+    const patterns = readDialogPatterns();
+    if (!refreshDialogMessage()) return;
     const duplicate = libraries.some((l) => l.label === name && l._uid !== editingUid);
-    if (duplicate) { errEl.textContent = "A library with that name already exists."; return; }
+    if (duplicate) { setDialogMessage("error", "A library with that name already exists."); return; }
 
     if (editingUid) {
       const entry = libraries.find((l) => l._uid === editingUid);
@@ -817,6 +887,9 @@
     document.getElementById("btn-choose").addEventListener("click", createVmr);
     document.getElementById("add-cancel").addEventListener("click", closeDialog);
     document.getElementById("add-submit").addEventListener("click", submitDialog);
+    document.getElementById("add-name").addEventListener("input", scheduleMatchPreview);
+    document.getElementById("add-patterns").addEventListener("input", scheduleMatchPreview);
+    document.getElementById("add-mode").addEventListener("change", scheduleMatchPreview);
     document.getElementById("add-dialog-overlay").addEventListener("click", (e) => {
       if (e.target.id === "add-dialog-overlay") closeDialog();
     });

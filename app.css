@@ -232,8 +232,14 @@
     background-repeat: no-repeat; background-position: right 9px center; background-size: 16px;
   }
   .dialog input:focus, .dialog select:focus { outline: 1px solid var(--accent-blue); }
+  /* Doubles as the live match-count preview (Add/Edit Library dialog) - same
+     slot, recolored/retexted, so it never stacks a second reserved-height
+     row on top of the validation error. */
   .dialog-error { color: var(--accent-red); font-size: 11px; min-height: 14px; margin-top: 8px; }
-  .dialog-buttons { display: flex; gap: 8px; margin-top: 16px; }
+  .dialog-message.neutral { color: var(--text-faint); }
+  .dialog-message.zero { color: var(--accent-amber); }
+  .dialog-message.some { color: var(--accent-green); }
+  .dialog-buttons { display: flex; gap: 8px; margin-top: 12px; }
   .dialog-buttons button { flex: 1; padding: 9px; border-radius: var(--radius-pill); border: 1px solid var(--border); cursor: pointer; font-size: 13px; font-family: inherit; }
   #add-cancel { background: var(--bg-card); color: var(--text-muted); }
   #add-submit { background: var(--accent-blue); color: #fff; border: none; }

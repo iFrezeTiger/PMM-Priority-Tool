@@ -373,6 +373,67 @@ def detect_libraries_from_file(input_path: Path, min_count: int = 5, max_candida
     return candidates[:max_candidates]
 
 
+def _bucket_rules(text: str, library_defs: list) -> dict:
+    """
+    Buckets each ModelMatchRule in `text` by whichever library (in priority
+    order) has at least one matching candidate - the first match wins the
+    whole rule, same as vPilot only ever consulting one custom rule set's
+    winning candidate(s). A rule with no match goes to the trailing "Other"
+    bucket (index len(library_defs)). Shared by process_split (which writes
+    the buckets out to files) and the Add/Edit Library dialog's live
+    match-count preview (which only needs bucket sizes, with no file I/O -
+    and needs to work before a library even has a confirmed unique label,
+    which is why buckets are keyed by index into library_defs rather than
+    by label).
+    """
+    rule_matches = list(FULL_RULE_RE.finditer(text))
+    if not rule_matches:
+        raise ValueError("No ModelMatchRule entries found - is this a valid vPilot .vmr file?")
+
+    other_index = len(library_defs)
+    buckets = {i: [] for i in range(other_index + 1)}
+    total_rules = 0
+    dropped_rules = 0
+
+    for rule_match in rule_matches:
+        rule_text = rule_match.group(0)
+        model_match = MODEL_RULE_RE.search(rule_text)
+        if not model_match:
+            buckets[other_index].append(rule_text)
+            continue
+
+        total_rules += 1
+        prefix, model_list, suffix = model_match.groups()
+        models = [m for m in model_list.split("//") if not is_excluded(m)]
+        if not models:
+            dropped_rules += 1
+            continue
+
+        winner_index = None
+        winner_models = []
+        for i, entry in enumerate(library_defs):
+            matched = [m for m in models if matches(m, entry)]
+            if matched:
+                winner_index = i
+                winner_models = matched
+                break
+        if winner_index is None:
+            winner_index = other_index
+            winner_models = models
+
+        new_attr = f"{prefix}{'//'.join(winner_models)}{suffix}"
+        new_rule_text = rule_text[:model_match.start()] + new_attr + rule_text[model_match.end():]
+        buckets[winner_index].append(new_rule_text)
+
+    return {
+        "buckets": buckets,
+        "other_index": other_index,
+        "rule_matches": rule_matches,
+        "total": total_rules,
+        "dropped": dropped_rules,
+    }
+
+
 def process_split(input_path: Path, output_dir: Path, library_defs: list = None) -> dict:
     """
     Splits a PMM .vmr file into one rule set per library, ordered so that
@@ -400,72 +461,34 @@ def process_split(input_path: Path, output_dir: Path, library_defs: list = None)
             "pmm_libraries.json was hand-edited)."
         )
     text = _read_vmr_text(input_path)
+    try:
+        bucketed = _bucket_rules(text, library_defs)
+    except ValueError as exc:
+        raise ValueError(f"{exc} ({input_path.name})") from None
 
-    rule_matches = list(FULL_RULE_RE.finditer(text))
-    if not rule_matches:
-        raise ValueError(
-            f"No ModelMatchRule entries found in {input_path.name} - is this a valid "
-            "vPilot .vmr file?"
-        )
+    rule_matches = bucketed["rule_matches"]
     header = text[:rule_matches[0].start()]
     footer = text[rule_matches[-1].end():]
-
-    order_labels = [entry["label"] for entry in library_defs] + ["Other"]
-    buckets = {label: [] for label in order_labels}
-    per_library_counts = {label: 0 for label in order_labels}
-
-    total_rules = 0
-    dropped_rules = 0
-    unclassified_rules = 0  # rules with no ModelName attribute at all
-
-    for rule_match in rule_matches:
-        rule_text = rule_match.group(0)
-        model_match = MODEL_RULE_RE.search(rule_text)
-        if not model_match:
-            unclassified_rules += 1
-            buckets["Other"].append(rule_text)
-            per_library_counts["Other"] += 1
-            continue
-
-        total_rules += 1
-        prefix, model_list, suffix = model_match.groups()
-        models = [m for m in model_list.split("//") if not is_excluded(m)]
-        if not models:
-            dropped_rules += 1
-            continue
-
-        winner_label = None
-        winner_models = []
-        for entry in library_defs:
-            matched = [m for m in models if matches(m, entry)]
-            if matched:
-                winner_label = entry["label"]
-                winner_models = matched
-                break
-        if winner_label is None:
-            winner_label = "Other"
-            winner_models = models
-
-        new_attr = f"{prefix}{'//'.join(winner_models)}{suffix}"
-        new_rule_text = rule_text[:model_match.start()] + new_attr + rule_text[model_match.end():]
-        buckets[winner_label].append(new_rule_text)
-        per_library_counts[winner_label] += 1
+    buckets = bucketed["buckets"]
+    order_labels = labels + ["Other"]
 
     output_dir.mkdir(parents=True, exist_ok=True)
     written_files = []
-    for idx, label in enumerate(order_labels, start=1):
-        rules = buckets[label]
+    per_library_counts = {}
+    for idx, label in enumerate(order_labels):
+        rules = buckets[idx]
+        per_library_counts[label] = len(rules)
         if not rules:
             continue
-        filename = f"{idx} - {sanitize_filename(label)}.vmr"
+        filename = f"{idx + 1} - {sanitize_filename(label)}.vmr"
         path = output_dir / filename
         content = header + "".join(rules) + footer
         path.write_text(content, encoding="utf-8")
         written_files.append({"path": str(path), "label": label, "count": len(rules)})
 
     return {
-        "total": total_rules,
-        "dropped": dropped_rules,
+        "total": bucketed["total"],
+        "dropped": bucketed["dropped"],
         "per_library": per_library_counts,
         "files": written_files,
         "output_dir": str(output_dir),
@@ -769,6 +792,15 @@ def run_gui() -> None:
                 "files": split_result["files"],
                 "order": [entry["label"] for entry in libs],
             }
+
+        def preview_match_counts(self, path, libs):
+            try:
+                input_path = Path(path)
+                text = _read_vmr_text(input_path)
+                bucketed = _bucket_rules(text, libs)
+            except Exception as exc:  # noqa: BLE001
+                return {"error": str(exc)}
+            return {"counts": [len(bucketed["buckets"][i]) for i in range(len(libs))]}
 
         def open_output_folder(self, path):
             try:
