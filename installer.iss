@@ -5,7 +5,7 @@
 ; compile this with Inno Setup (ISCC.exe installer.iss).
 
 #define MyAppName "PMM Priority Tool"
-#define MyAppVersion "1.0.5"
+#define MyAppVersion "1.0.6"
 #define MyAppExeName "PMM_Priority_Tool.exe"
 #define MyAppSourceDir "dist\PMM_Priority_Tool"
 
