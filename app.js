@@ -21,6 +21,14 @@
 
   let loadedFilePath = null;
   let loadedFileName = null;
+  let lastOutputDir = null;
+  let isBusy = false;
+  let activeTab = "priority";
+
+  const TOOLBAR_LABELS = {
+    priority: { load: "Load .vmr File...", add: "+ Add Library..." },
+    log: { load: "\u{1F4C1} Open Output Folder", add: "\u{1F4CB} Copy Log" },
+  };
 
   function describe(entry) {
     const verb = entry.mode === "contains" ? "contains" : "starts with";
@@ -213,11 +221,89 @@
     document.getElementById("status-text").textContent = text;
   }
 
+  // Measures the target width off-DOM (a detached clone) so the resize can
+  // start immediately without first touching the visible label - if it
+  // waited on the label's own fade-out to know the new text, the resize
+  // would lag behind the tab-pill slide instead of running in lockstep.
+  function measureWidth(btn, text) {
+    const clone = btn.cloneNode(true);
+    clone.style.cssText = "position:absolute; visibility:hidden; width:auto;";
+    clone.querySelector(".btn-label").textContent = text;
+    document.body.appendChild(clone);
+    // Round to a whole pixel: getBoundingClientRect returns a fractional value,
+    // and animating a transition to that exact fraction as a flex item's width
+    // snaps once the transition ends and flexbox resolves/rounds it for real
+    // layout - a whole-pixel target matches what layout settles on, so there's
+    // nothing left to snap to.
+    const width = Math.round(clone.getBoundingClientRect().width);
+    document.body.removeChild(clone);
+    return width;
+  }
+
+  // Morphs #btn-load/#btn-add in place between their Priority-tab role (Load
+  // .vmr File.../+ Add Library...) and Log-tab role (Open Output Folder/Copy
+  // Log) - same pill, only its width and label change, so it reads as one
+  // control resizing/retexting rather than two different buttons swapping.
+  function morphButton(btn, text) {
+    const label = btn.querySelector(".btn-label");
+    if (label.dataset.text === text) return;
+    label.dataset.text = text;
+
+    // starts in the same tick as moveTabIndicator()'s own width/transform
+    // change, so the pill resize and the tab-pill slide run in lockstep.
+    btn.style.width = measureWidth(btn, text) + "px";
+
+    // The text swap is a separate, purely cosmetic crossfade nested inside
+    // that resize - .16s fade-out + .16s fade-in = .32s total, landing the
+    // swap exactly at the midpoint so it starts/ends with everything else.
+    label.style.opacity = "0";
+    setTimeout(() => {
+      label.textContent = text;
+      label.style.opacity = "1";
+    }, 160);
+  }
+
   function switchTab(name) {
+    activeTab = name;
     document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === name + "-view"));
-    document.getElementById("toolbar-collapse").classList.toggle("collapsed", name === "log");
+    document.getElementById("icon-group").classList.toggle("faded", name === "log");
+
+    morphButton(document.getElementById("btn-load"), TOOLBAR_LABELS[name].load);
+    morphButton(document.getElementById("btn-add"), TOOLBAR_LABELS[name].add);
+    updateToolbarButtons();
+
     moveTabIndicator(name);
+  }
+
+  // Single source of truth for #btn-load/#btn-add's disabled state, since
+  // they now serve different roles (and different enable conditions) on each
+  // tab - called after every tab switch and every busy/idle transition.
+  function updateToolbarButtons() {
+    const btnLoad = document.getElementById("btn-load");
+    const btnAdd = document.getElementById("btn-add");
+    if (activeTab === "log") {
+      btnLoad.disabled = isBusy || !lastOutputDir;
+      btnAdd.disabled = false;
+    } else {
+      btnLoad.disabled = isBusy;
+      btnAdd.disabled = !loadedFilePath;
+    }
+  }
+
+  async function openOutputFolder() {
+    if (!window.pywebview || !lastOutputDir) return;
+    await window.pywebview.api.open_output_folder(lastOutputDir);
+  }
+
+  async function copyLog() {
+    const text = document.getElementById("log-output").textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      // clipboard access can be denied depending on webview permissions - not
+      // worth surfacing an error for a convenience action like this.
+    }
   }
 
   function moveTabIndicator(name) {
@@ -293,16 +379,18 @@
   }
 
   function showLoading(text) {
+    isBusy = true;
     document.getElementById("loading-text").textContent = text;
     document.getElementById("loading-overlay").classList.remove("hidden");
-    document.getElementById("btn-load").disabled = true;
+    updateToolbarButtons();
     document.getElementById("btn-reset").disabled = true;
     document.getElementById("btn-choose").disabled = true;
   }
 
   function hideLoading() {
+    isBusy = false;
     document.getElementById("loading-overlay").classList.add("hidden");
-    document.getElementById("btn-load").disabled = false;
+    updateToolbarButtons();
     if (loadedFilePath) {
       document.getElementById("btn-reset").disabled = false;
       document.getElementById("btn-choose").disabled = false;
@@ -474,6 +562,7 @@
       logEl.textContent += "Excluded tokens containing: " + result.excluded.join(", ") + "\n";
       logEl.textContent += "Rules dropped (empty after exclusion): " + result.dropped + "\n";
       logEl.textContent += "Output folder: " + result.output_dir + "\n";
+      lastOutputDir = result.output_dir;
       result.files.forEach(function(f) {
         logEl.textContent += "  " + f.label + " - " + f.count + " rules -> " + f.path + "\n";
       });
@@ -718,8 +807,12 @@
   function wireStaticEvents() {
     document.getElementById("btn-up").addEventListener("click", () => moveSelected(-1));
     document.getElementById("btn-down").addEventListener("click", () => moveSelected(1));
-    document.getElementById("btn-add").addEventListener("click", () => openDialog(null));
-    document.getElementById("btn-load").addEventListener("click", loadFile);
+    document.getElementById("btn-add").addEventListener("click", () => {
+      if (activeTab === "log") copyLog(); else openDialog(null);
+    });
+    document.getElementById("btn-load").addEventListener("click", () => {
+      if (activeTab === "log") openOutputFolder(); else loadFile();
+    });
     document.getElementById("btn-reset").addEventListener("click", redetect);
     document.getElementById("btn-choose").addEventListener("click", createVmr);
     document.getElementById("add-cancel").addEventListener("click", closeDialog);
@@ -748,6 +841,18 @@
     wireStaticEvents();
     libraries = [];
     fullRender();
+
+    // Lock #btn-load/#btn-add to a concrete pixel width up front (rather than
+    // "auto") so the first tab switch's morphButton() resize has a real
+    // starting value to transition from, and record the label text already
+    // in the HTML so a same-tab re-click doesn't trigger a no-op morph.
+    ["btn-load", "btn-add"].forEach((id) => {
+      const btn = document.getElementById(id);
+      const label = btn.querySelector(".btn-label");
+      label.dataset.text = label.textContent;
+      btn.style.width = Math.round(btn.getBoundingClientRect().width) + "px";
+    });
+
     const indicator = document.getElementById("tab-indicator");
     indicator.style.transition = "none";
     moveTabIndicator("priority");

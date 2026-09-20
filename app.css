@@ -73,23 +73,16 @@
   }
   .tab-btn.active { color: var(--bg-main); }
 
-  /* grid-rows (fr-unit) collapse: unlike max-height, this tracks the toolbar's real
-     height the whole way through, so the shrink/grow reads as one smooth motion
-     instead of sitting still and then snapping once max-height dips below content size. */
-  .toolbar-collapse {
-    display: grid; grid-template-rows: 1fr; overflow: hidden;
-    margin-top: 0; margin-bottom: 0;
-    transition: grid-template-rows .32s var(--ease-out),
-      margin-bottom .32s var(--ease-out), margin-top .32s var(--ease-out);
-  }
-  /* also cancels one of the flex column's two 12px gaps around the collapsed toolbar,
-     so tabs-to-content-box spacing matches the status-card-to-tabs spacing exactly */
-  .toolbar-collapse.collapsed { grid-template-rows: 0fr; margin-bottom: 0; margin-top: -12px; pointer-events: none; }
   .toolbar {
-    display: flex; align-items: center; gap: 6px; min-height: 0; overflow: hidden;
-    opacity: 1; transition: opacity .32s var(--ease-out);
+    display: flex; align-items: center; gap: 6px; min-height: 0;
   }
-  .toolbar-collapse.collapsed .toolbar { opacity: 0; }
+  /* Up/Down fade rather than collapse when the Log tab reuses this same row for
+     Open Output Folder/Copy Log - opacity never touches layout, so there's no
+     reflow for the browser to redo every frame the way a width/height collapse
+     would need. The icon-group's box keeps its reserved space; only its
+     contents fade, and #btn-load/#btn-add resize to fill the row instead. */
+  .icon-group { display: flex; gap: 6px; opacity: 1; transition: opacity .32s var(--ease-out); }
+  .icon-group.faded { opacity: 0; pointer-events: none; }
   .icon-btn {
     width: 32px; height: 28px; border-radius: var(--radius-pill); background: var(--bg-card);
     border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; font-size: 12px;
@@ -97,8 +90,19 @@
   .icon-btn:disabled { opacity: .35; cursor: default; }
   .icon-btn:not(:disabled):hover { background: var(--bg-row-hover); }
   .toolbar .spacer { flex: 1; }
+  /* #btn-load/#btn-add double as Open Output Folder/Copy Log on the Log tab:
+     same pill, its width and .btn-label text morph in place (see switchTab()
+     in app.js) rather than swapping to different buttons. */
   #btn-add, #btn-load {
     height: 28px; border-radius: var(--radius-pill); font-size: 12px; padding: 0 14px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; flex-shrink: 0;
+  }
+  #btn-add .btn-label, #btn-load .btn-label {
+    display: inline-block;
+    /* .16s out + .16s in = .32s total, landing the text swap exactly at the
+       midpoint so it starts/ends on the same tick as the pill's own width
+       resize and the tab-pill slide instead of running on a shorter clock. */
+    transition: opacity .16s var(--ease-out);
   }
   #btn-add {
     background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted);
@@ -334,10 +338,18 @@
   .pct-digit-val { display: block; text-align: center; font-variant-numeric: tabular-nums; }
 
   /* Fluid press feedback, applied to every clickable button in the app. */
-  .ghost-btn, .tab-btn, .icon-btn, #btn-add, #btn-load, .primary-btn,
+  .ghost-btn, .tab-btn, .icon-btn, .primary-btn,
   .dialog-buttons button, .pill .edit, .pill .remove, .update-now-btn {
     transition: transform .15s var(--ease-out), opacity .1s ease,
       background-color .15s ease, border-color .15s ease;
+  }
+  /* Same press feedback as above, plus the width resize for the
+     Load/Open Folder and Add Library/Copy Log morph (see switchTab() in app.js) -
+     kept as its own rule since a shared `transition` shorthand can't be
+     split across two selector lists without one silently overriding the other. */
+  #btn-add, #btn-load {
+    transition: transform .15s var(--ease-out), opacity .1s ease,
+      background-color .15s ease, border-color .15s ease, width .32s var(--ease-out);
   }
   .ghost-btn:not(:disabled):active, .tab-btn:active, .icon-btn:not(:disabled):active,
   #btn-add:not(:disabled):active, #btn-load:not(:disabled):active, .primary-btn:not(:disabled):active,

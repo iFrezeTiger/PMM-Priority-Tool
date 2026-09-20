@@ -770,6 +770,13 @@ def run_gui() -> None:
                 "order": [entry["label"] for entry in libs],
             }
 
+        def open_output_folder(self, path):
+            try:
+                os.startfile(path)
+            except Exception as exc:  # noqa: BLE001
+                return {"error": str(exc)}
+            return {"ok": True}
+
         def check_for_update(self):
             try:
                 return check_for_update_impl()
