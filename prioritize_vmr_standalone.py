@@ -153,9 +153,15 @@ def _load_raw_config() -> dict:
 
 
 def _save_raw_config(data: dict) -> None:
+    """Writes via a temp file + os.replace() rather than a direct write_text(),
+    so a crash/kill mid-write can't leave pmm_libraries.json truncated/corrupt -
+    a corrupt file would otherwise make _load_raw_config's broad except silently
+    wipe every saved per-file library config and the saved window state."""
     path = get_config_path()
     try:
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp_path, path)
     except Exception:
         pass  # non-fatal, e.g. install folder is read-only
 
