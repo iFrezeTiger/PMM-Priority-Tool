@@ -391,6 +391,14 @@ def process_split(input_path: Path, output_dir: Path, library_defs: list = None)
     empty after STUB-style exclusion are dropped, same as before.
     """
     library_defs = library_defs if library_defs is not None else build_default_libraries()
+    labels = [entry["label"] for entry in library_defs]
+    duplicates = sorted({label for label in labels if labels.count(label) > 1})
+    if duplicates:
+        raise ValueError(
+            "Duplicate library name(s): " + ", ".join(duplicates)
+            + " - each library needs a unique name (this usually means "
+            "pmm_libraries.json was hand-edited)."
+        )
     text = _read_vmr_text(input_path)
 
     rule_matches = list(FULL_RULE_RE.finditer(text))
