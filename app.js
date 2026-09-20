@@ -473,7 +473,8 @@
     logEl.textContent += "Detected " + detected.length + " librar" + (detected.length === 1 ? "y" : "ies") + ":\n";
     detected.forEach(function(d) {
       const countText = ("count" in d) ? " - " + d.count + " models" : "";
-      logEl.textContent += "  " + d.label + countText + " (starts with \"" + d.patterns[0] + "\")\n";
+      const verb = d.mode === "contains" ? "contains" : "starts with";
+      logEl.textContent += "  " + d.label + countText + " (" + verb + " \"" + d.patterns[0] + "\")\n";
     });
     logEl.textContent += "-".repeat(50) + "\n";
     logEl.scrollTop = logEl.scrollHeight;
