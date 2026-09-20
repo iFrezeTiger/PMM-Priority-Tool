@@ -27,7 +27,7 @@
 
   const TOOLBAR_LABELS = {
     priority: { load: "Load .vmr File...", add: "+ Add Library..." },
-    log: { load: "\u{1F4C1} Open Output Folder", add: "\u{1F4CB} Copy Log" },
+    log: { load: "Open Output Folder", add: "Copy Log" },
   };
 
   function describe(entry) {
