@@ -352,6 +352,11 @@ def detect_libraries_from_file(input_path: Path, min_count: int = 5, max_candida
     first, so the caller can decide how many to actually use.
     """
     text = _read_vmr_text(input_path)
+    if not FULL_RULE_RE.search(text):
+        raise ValueError(
+            f"{input_path.name} isn't a .vmr file (no ModelMatchRule entries found) - "
+            "select a vPilot model-matching rule file instead."
+        )
 
     names_by_first_token: dict = {}
     for model_match in MODEL_RULE_RE.finditer(text):

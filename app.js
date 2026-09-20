@@ -498,10 +498,23 @@
     const logEl = document.getElementById("log-output");
     if (result.error) {
       logEl.textContent += "ERROR: " + result.error + "\n";
-      showStatus("error", "error - see log");
-      setFileStatus("error", name);
-      switchTab("log");
       hideLoading();
+      // Same invalid-file overlay the drag-and-drop path uses, so a rejected
+      // file is obvious no matter how it was picked (dialog or drop) instead
+      // of only showing up as a line in a log tab nobody's looking at.
+      setDropOverlay("invalid", '"' + name + '" - not a valid .vmr file.');
+      setTimeout(hideDropOverlay, 1800);
+      // A rejected file never touches loadedFilePath/libraries, so if a valid
+      // file was already loaded, its session is still intact - the status
+      // card should keep reflecting that instead of showing the rejected
+      // file's name next to a red dot while Libraries/Create VMR still work.
+      if (loadedFilePath) {
+        setFileStatus("ok", loadedFileName);
+        showStatus("idle", READY_TEXT);
+      } else {
+        showStatus("error", "error - see log");
+        setFileStatus("error", name);
+      }
       return;
     }
 
@@ -549,10 +562,21 @@
   // Called from Python (run_gui's document.on("drop", ...) handler) once it has
   // resolved the real filesystem path - the plain browser drop event below only
   // ever sees a filename, never a usable path.
+  // Authoritative check: the "drop" listener below only sees the raw browser
+  // File object (fires first, before Python resolves a real path) and its own
+  // "invalid" cue would otherwise get wiped out by this handler always running
+  // next and loading unconditionally - so the extension gets checked again here
+  // against the resolved path, which is what actually decides whether to load.
   function handleDroppedFile(path) {
+    if (isModalOpen()) { hideDropOverlay(); return; }
+    const name = path.split(/[\\/]/).pop();
+    if (!/\.vmr$/i.test(name)) {
+      setDropOverlay("invalid", '"' + name + '" - drop a .vmr file instead.');
+      setTimeout(hideDropOverlay, 1800);
+      return;
+    }
     hideDropOverlay();
-    if (isModalOpen()) return;
-    loadFromPath(path, path.split(/[\\/]/).pop());
+    loadFromPath(path, name);
   }
 
   function wireDragAndDrop() {
