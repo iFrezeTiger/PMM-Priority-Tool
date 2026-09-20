@@ -75,6 +75,7 @@ import sys
 import tempfile
 import threading
 import urllib.request
+import webbrowser
 from collections import Counter
 from pathlib import Path
 
@@ -816,6 +817,15 @@ def run_gui() -> None:
         def open_output_folder(self, path):
             try:
                 os.startfile(path)
+            except Exception as exc:  # noqa: BLE001
+                return {"error": str(exc)}
+            return {"ok": True}
+
+        def open_url(self, url):
+            if not (isinstance(url, str) and url.startswith(("http://", "https://"))):
+                return {"error": "Refusing to open a non-http(s) URL."}
+            try:
+                webbrowser.open(url)
             except Exception as exc:  # noqa: BLE001
                 return {"error": str(exc)}
             return {"ok": True}

@@ -678,10 +678,22 @@
   let updateChangelogOpen = false;
   let updatePolling = null;
 
+  // Release notes are plain-ish markdown (bullet lines, the odd "[label](url)"
+  // link for a commit reference) - not raw text, but not worth a real markdown
+  // parser either. Escapes HTML first, then turns just that one link syntax
+  // into real anchors; everything else stays as plain wrapped text.
+  function renderChangelog(text) {
+    const escaped = (text || "No changelog provided.")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function(_, label, url) {
+      return '<a href="' + url + '" class="changelog-link" data-external-link="1">' + label + '</a>';
+    });
+  }
+
   function showUpdateBanner(info) {
     updateInfo = info;
     document.getElementById("update-version").textContent = "v" + info.version;
-    document.getElementById("update-changelog-text").textContent = info.changelog || "No changelog provided.";
+    document.getElementById("update-changelog-text").innerHTML = renderChangelog(info.changelog);
     const errEl = document.getElementById("update-error");
     errEl.textContent = "";
     errEl.classList.remove("status");
@@ -894,7 +906,7 @@
     const pending = await window.pywebview.api.get_pending_changelog();
     if (pending && pending.version) {
       document.getElementById("whatsnew-version").textContent = pending.version;
-      document.getElementById("whatsnew-text").textContent = pending.changelog || "No changelog provided.";
+      document.getElementById("whatsnew-text").innerHTML = renderChangelog(pending.changelog);
       document.getElementById("whatsnew-overlay").classList.remove("hidden");
     }
   }
@@ -934,6 +946,15 @@
     });
     document.querySelectorAll(".tab-btn").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+    // Changelog links (see renderChangelog) need to open in the user's real
+    // browser - this window is a native WebView2 control, so a plain <a>
+    // click would otherwise navigate the app itself to github.com.
+    document.addEventListener("click", (e) => {
+      const link = e.target.closest("a[data-external-link]");
+      if (!link) return;
+      e.preventDefault();
+      if (window.pywebview) window.pywebview.api.open_url(link.getAttribute("href"));
     });
     wireDragAndDrop();
   }
