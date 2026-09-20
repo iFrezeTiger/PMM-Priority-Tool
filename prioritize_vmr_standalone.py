@@ -79,7 +79,7 @@ import webbrowser
 from collections import Counter
 from pathlib import Path
 
-APP_VERSION = "1.0.8"
+APP_VERSION = "1.0.9"
 
 # GitHub repo the auto-updater checks for new releases (owner/repo). Each
 # release's tag must be "vX.Y.Z" matching APP_VERSION below, with the built
