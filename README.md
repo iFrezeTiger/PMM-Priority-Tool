@@ -23,6 +23,7 @@ This tool takes a merged `.vmr` file (like PMM's) and **splits it into one `.vmr
 - Add your own custom library definitions (prefix or "contains" match on model name)
 - Remembers the library list/order **per input file**, so reloading the same `.vmr` later restores your setup
 - Excludes stub/placeholder models automatically
+- Log tab shows a detailed record of each run, with one-click Copy Log and Open Output Folder
 - Built-in auto-updater that checks GitHub Releases and installs updates in place
 - Also runs headless from the command line for scripting
 
