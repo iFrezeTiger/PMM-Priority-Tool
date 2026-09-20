@@ -820,6 +820,14 @@
     document.getElementById("add-dialog-overlay").addEventListener("click", (e) => {
       if (e.target.id === "add-dialog-overlay") closeDialog();
     });
+    document.getElementById("add-dialog-overlay").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.tagName !== "BUTTON") {
+        e.preventDefault();
+        submitDialog();
+      } else if (e.key === "Escape") {
+        closeDialog();
+      }
+    });
     document.getElementById("update-toggle-log").addEventListener("click", toggleUpdateChangelog);
     document.getElementById("update-now-btn").addEventListener("click", startUpdate);
     document.getElementById("update-dismiss").addEventListener("click", dismissUpdateBanner);
